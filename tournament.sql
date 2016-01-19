@@ -13,8 +13,10 @@ CREATE TABLE players(
 );
 
 CREATE TABLE matches(
-  home REFERENCES players (id),
-  visitor REFERENCES players (id),
-  round INTEGER,
-  PRIMARY KEY(home, visitor, round)
+  match_id SERIAL
+  home SERIAL REFERENCES players (id),
+  visitor SERIAL REFERENCES players (id),
+  winner SERIAL REFERENCES players (id),
+  PRIMARY KEY(match_id),
+  CHECK ((winner = home) OR (winner = visitor))
 );

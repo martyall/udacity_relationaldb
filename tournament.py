@@ -16,13 +16,15 @@ def deleteMatches():
     db = connect()
     cursor = db.cursor()
     cursor.execute("DELETE FROM matches;")
+    db.commit()
     db.close()
 
 def deletePlayers():
     """Remove all the player records from the database."""
     db = connect()
     cursor = db.cursor()
-    cursor.execute("DELETE FROM players;")i
+    cursor.execute("DELETE FROM players;")
+    db.commit()
     db.close()
 
 def countPlayers():
@@ -46,6 +48,7 @@ def registerPlayer(name):
     db = connect()
     cursor = db.cursor()
     cursor.execute("INSERT INTO players (name) VALUES (%s);", (name,))
+    db.commit()
     db.close()
 
 def playerStandings():
@@ -64,16 +67,22 @@ def playerStandings():
     db = connect()
     cursor = db.cursor()
     query = """
-        SELECT players.id, players.name, i
-        sum(CASE WHEN (matches.winner = players.id) THEN 1 ELSE 0 END) as wins, 
-        sum(CASE WHEN (MATCHES.winner IS NOT NULL) THEN 1 ELSE 0) as matches from
-        JOIN players
+        SELECT players.id, players.name, 
+        sum(CASE WHEN (matches.winner = players.id) THEN 1 ELSE 0 END) AS wins, 
+        sum(CASE WHEN (matches.winner IS NOT NULL) THEN 1 ELSE 0 END) AS matches FROM
+        players JOIN
         matches
         ON (players.id = matches.home) OR (players.id = matches.visitor)
         GROUP BY players.id;
         """
     cursor.execute(query)
     stats = cursor.fetchall()
+    have_played = set(map(lambda x: (x[0], x[1]), stats))
+    # now we have to get everyone who hasn't played a match yet and put them in
+    cursor.execute("SELECT players.id, players.name from players;")
+    players = set(cursor.fetchall())
+    havent_played = players - have_played
+    stats = stats + map(lambda x: (x[0], x[1], 0, 0), list(havent_played))
     db.close()
     return stats
 
@@ -87,11 +96,11 @@ def reportMatch(winner, loser):
     db = connect()
     cursor = db.cursor()
     query = """
-        UPDATE matches
-        SET winner = %s
-        WHERE id = %s
+        INSERT INTO matches (home, visitor, winner)
+        VALUES (%s, %s, %s);
         """
-    cursor.execute(query, (winner, winner,))
+    cursor.execute(query, (winner, loser, winner))
+    db.commit()
     db.close()
 
 def swissPairings():
@@ -113,15 +122,15 @@ def swissPairings():
     cursor = db.cursor()
     query = """
         SELECT a.id, a.name from (
-            SELECT players.id, players.name, i
+            SELECT players.id, players.name,
             sum(CASE WHEN (matches.winner = players.id) THEN 1 ELSE 0 END) as wins, 
-            sum(CASE WHEN (MATCHES.winner IS NOT NULL) THEN 1 ELSE 0) as matches from
-            JOIN players
+            sum(CASE WHEN (MATCHES.winner IS NOT NULL) THEN 1 ELSE 0 END) as matches from
+            players JOIN
             matches
             ON (players.id = matches.home) OR (players.id = matches.visitor)
             GROUP BY players.id
-            ) as a
-        ORDER BY a.wins;
+            ORDER BY wins
+            ) as a;
         """
     cursor.execute(query)
     players_with_wins = cursor.fetchall()
@@ -134,4 +143,5 @@ def split_into_matches(players, acc):
     if players == []:
         return acc
     else:
-        return split_into_matches(players[2:], acc + [(players[0], players[1])])
+        match = (players[0][0], players[0][1], players[1][0], players[1][1]) 
+        return split_into_matches(players[2:], acc + [match])
